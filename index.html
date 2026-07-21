@@ -108,6 +108,7 @@
     font:inherit; font-size:.85rem; padding:7px 16px; border-radius:9px; cursor:pointer;}
   .btn:hover{border-color:var(--accent);}
   .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600;}
+  .btn.sm{padding:4px 12px; font-size:.8rem;}
   .btn[aria-pressed="true"]{background:var(--accent); border-color:var(--accent);
     color:var(--accent-ink); font-weight:600;}
   .scrub{flex:1; display:flex; align-items:center; gap:10px; min-width:180px;}
@@ -227,7 +228,7 @@
     <div class="source-row only-text">
       <span class="lbl">Line</span>
       <input id="lineText" type="text"
-        value="Somewhere between waking and sleep, the city remembers itself."
+        value="Most people who come here come back. Not for something new the second time. For the same walk, the same table, the same hour of the afternoon."
         aria-label="Preview text">
     </div>
     <div class="source-row only-image">
@@ -254,7 +255,13 @@
             <option value="serif" selected>Serif — Iowan / Palatino</option>
             <option value="sans">Sans — system</option>
             <option value="mono">Mono</option>
+            <option value="custom" disabled>Custom — upload below</option>
           </select>
+        </div>
+        <div class="ctl-row">
+          <label for="fontFile">Custom font</label>
+          <button class="btn sm" id="btnFont">Upload…</button>
+          <input type="file" id="fontFile" accept=".woff2,.woff,.ttf,.otf" hidden>
         </div>
         <div class="ctl">
           <label for="tSize">Size</label><output id="otSize">40 px</output>
@@ -701,6 +708,29 @@
       $(out).textContent = fmt(TYPE[key]);
       applyType();
     });
+  });
+  let customFace = null;
+  $("btnFont").addEventListener("click", () => $("fontFile").click());
+  $("fontFile").addEventListener("change", async e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const face = new FontFace("DreamCustom", await file.arrayBuffer());
+      await face.load();
+      if (customFace) document.fonts.delete(customFace);
+      customFace = face;
+      document.fonts.add(face);
+      FAMILIES.custom = "'DreamCustom'," + FAMILIES.serif;
+      const opt = $("tFamily").querySelector('option[value="custom"]');
+      opt.disabled = false;
+      opt.textContent = "Custom — " + file.name.replace(/\.[^.]+$/, "");
+      $("tFamily").value = "custom";
+      TYPE.family = "custom";
+      applyType();
+    } catch (err) {
+      $("tFamily").querySelector('option[value="custom"]').textContent =
+        "Custom — couldn't read that file";
+    }
   });
   $("tItalic").addEventListener("change", e => { TYPE.italic = e.target.checked; applyType(); });
   $("tColorOn").addEventListener("change", e => { TYPE.colorOn = e.target.checked; applyType(); });
