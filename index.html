@@ -48,7 +48,8 @@
     -webkit-font-smoothing:antialiased;
   }
 
-  .rig{max-width:1160px; margin:0 auto; padding:28px 24px 64px;
+  .rig{--stageH:clamp(460px, 64vh, 720px);
+    max-width:1320px; margin:0 auto; padding:28px 24px 64px;
     display:grid; grid-template-columns:minmax(0,1fr) 324px; gap:22px;}
   .rig[data-media="text"] .only-image{display:none !important;}
   .rig[data-media="image"] .only-text{display:none !important;}
@@ -69,12 +70,12 @@
 
   /* ---------- stage ---------- */
   .stage-col{display:flex; flex-direction:column; gap:14px; min-width:0;}
-  .viewport{position:relative; height:430px; overflow:hidden; border-radius:14px;
+  .viewport{position:relative; height:var(--stageH); overflow:hidden; border-radius:14px;
     border:1px solid var(--line); background:var(--surface2);}
   .viewport.scrolly{overflow-y:auto; scrollbar-width:thin;}
   .track{height:100%;}
   .viewport.scrolly .track{height:360%;}
-  .sticky{position:sticky; top:0; height:430px; display:grid; place-items:center;
+  .sticky{position:sticky; top:0; height:var(--stageH); display:grid; place-items:center;
     overflow:hidden; padding:0 8%;}
   .blob{position:absolute; width:55%; aspect-ratio:1; border-radius:50%;
     filter:blur(70px); opacity:.35; pointer-events:none;}
@@ -86,7 +87,7 @@
   @keyframes drift2{to{transform:translate(-10%,-12%) scale(1.1)}}
   @media (prefers-reduced-motion: reduce){ .blob{animation:none} }
 
-  .dream{position:relative; margin:0; max-width:22ch; text-align:center;
+  .dream{position:relative; margin:0; max-width:26ch; text-align:center;
     font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
     font-size:clamp(1.6rem,3.4vw,2.5rem); line-height:1.35; font-weight:500;
     text-wrap:balance;}
@@ -140,10 +141,16 @@
   .ctl input[type=range]{grid-column:1/-1;}
   .ctl select{grid-column:1/-1; font:inherit; font-size:.84rem; color:var(--ink);
     background:var(--surface2); border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
+  .ctl-row{display:flex; align-items:center; gap:10px;}
+  .ctl-row label{flex:1; font-size:.8rem; color:var(--muted);}
+  input[type=color]{width:36px; height:24px; padding:0; border:1px solid var(--line);
+    border-radius:6px; background:none; cursor:pointer;}
+  input[type=color]:disabled{opacity:.35; cursor:default;}
 
   .switch{position:relative; width:34px; height:20px; flex:none;}
   .switch input{position:absolute; inset:0; opacity:0; cursor:pointer; margin:0;}
-  .switch .knob{position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .15s;}
+  .switch .knob{position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .15s;
+    pointer-events:none;}
   .switch .knob::after{content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
     border-radius:50%; background:var(--bg); transition:transform .15s;}
   .switch input:checked + .knob{background:var(--accent);}
@@ -236,6 +243,41 @@
     <div class="preset-card">
       <label for="pPreset">Preset</label>
       <select id="pPreset"></select>
+    </div>
+
+    <div class="layer only-text" data-layer="type">
+      <div class="head"><h2>Type <small>· the line itself</small></h2></div>
+      <div class="body">
+        <div class="ctl">
+          <label for="tFamily">Family</label><output></output>
+          <select id="tFamily">
+            <option value="serif" selected>Serif — Iowan / Palatino</option>
+            <option value="sans">Sans — system</option>
+            <option value="mono">Mono</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <label for="tSize">Size</label><output id="otSize">40 px</output>
+          <input type="range" id="tSize" min="20" max="110" step="1" value="40">
+        </div>
+        <div class="ctl">
+          <label for="tWeight">Weight</label><output id="otWeight">500</output>
+          <input type="range" id="tWeight" min="300" max="800" step="100" value="500">
+        </div>
+        <div class="ctl">
+          <label for="tLine">Line height</label><output id="otLine">1.35</output>
+          <input type="range" id="tLine" min="1.1" max="2" step="0.05" value="1.35">
+        </div>
+        <div class="ctl-row">
+          <label for="tItalic">Italic</label>
+          <span class="switch"><input type="checkbox" id="tItalic" aria-label="Italic"><span class="knob"></span></span>
+        </div>
+        <div class="ctl-row">
+          <label for="tColorOn">Custom color</label>
+          <input type="color" id="tColor" value="#ece9f7" disabled aria-label="Text color">
+          <span class="switch"><input type="checkbox" id="tColorOn" aria-label="Use custom color"><span class="knob"></span></span>
+        </div>
+      </div>
     </div>
 
     <div class="layer" data-layer="blur">
@@ -633,6 +675,37 @@
     presetSel.value = presetSel.value; // keep selection
   });
 
+  /* ---------- type controls (preview typography, text mode only — not exported) ---------- */
+  const TYPE = { family:"serif", size:40, weight:500, line:1.35, italic:false, colorOn:false, color:"#ece9f7" };
+  const FAMILIES = {
+    serif:"'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif",
+    sans:"system-ui,-apple-system,'Segoe UI',sans-serif",
+    mono:"ui-monospace,'SF Mono',Menlo,monospace"
+  };
+  function applyType(){
+    dream.style.fontFamily = FAMILIES[TYPE.family];
+    dream.style.fontSize = TYPE.size + "px";
+    dream.style.fontWeight = TYPE.weight;
+    dream.style.lineHeight = TYPE.line;
+    dream.style.fontStyle = TYPE.italic ? "italic" : "normal";
+    dream.style.color = TYPE.colorOn ? TYPE.color : "";
+    $("tColor").disabled = !TYPE.colorOn;
+  }
+  $("tFamily").addEventListener("change", e => { TYPE.family = e.target.value; applyType(); });
+  [["tSize","otSize","size", v => v + " px"],
+   ["tWeight","otWeight","weight", v => String(v)],
+   ["tLine","otLine","line", v => v.toFixed(2)]
+  ].forEach(([id, out, key, fmt]) => {
+    $(id).addEventListener("input", () => {
+      TYPE[key] = parseFloat($(id).value);
+      $(out).textContent = fmt(TYPE[key]);
+      applyType();
+    });
+  });
+  $("tItalic").addEventListener("change", e => { TYPE.italic = e.target.checked; applyType(); });
+  $("tColorOn").addEventListener("change", e => { TYPE.colorOn = e.target.checked; applyType(); });
+  $("tColor").addEventListener("input", e => { TYPE.color = e.target.value; applyType(); });
+
   /* ---------- text + image sources ---------- */
   $("lineText").addEventListener("input", e => {
     split(e.target.value || "…");
@@ -916,6 +989,7 @@ ScrollTrigger.create({
 
   /* ---------- init ---------- */
   split($("lineText").value);
+  applyType();
   img.src = makeScene();
   buildPresets(); refreshControls();
   if (reduced){ apply(1); syncScrub(1); }
