@@ -1,0 +1,927 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Dream Rig — adjustment-layer playground for tuning dreamy text and image reveals, with CSS+JS export for scrollytelling pages.">
+<title>Dream Rig — dreamy reveal playground</title>
+</head>
+<body>
+<style>
+  :root{
+    --bg:#14121f; --surface:#1e1a33; --surface2:#171429; --line:#2e2947;
+    --ink:#ece9f7; --muted:#9c95b8; --faint:#6b6489;
+    --accent:#a3b3f5; --accent-ink:#14121f;
+    --glow1:#7f7bd9; --glow2:#d98bbf;
+    --code-bg:#141126;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f2f1f7; --surface:#fbfaff; --surface2:#f6f4fc; --line:#dcd8ea;
+      --ink:#292346; --muted:#6f6890; --faint:#a89fc9;
+      --accent:#5761c7; --accent-ink:#fbfaff;
+      --glow1:#c5c1f2; --glow2:#f0c3dd;
+      --code-bg:#efedf8;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14121f; --surface:#1e1a33; --surface2:#171429; --line:#2e2947;
+    --ink:#ece9f7; --muted:#9c95b8; --faint:#6b6489;
+    --accent:#a3b3f5; --accent-ink:#14121f;
+    --glow1:#7f7bd9; --glow2:#d98bbf;
+    --code-bg:#141126;
+  }
+  :root[data-theme="light"]{
+    --bg:#f2f1f7; --surface:#fbfaff; --surface2:#f6f4fc; --line:#dcd8ea;
+    --ink:#292346; --muted:#6f6890; --faint:#a89fc9;
+    --accent:#5761c7; --accent-ink:#fbfaff;
+    --glow1:#c5c1f2; --glow2:#f0c3dd;
+    --code-bg:#efedf8;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .rig{max-width:1160px; margin:0 auto; padding:28px 24px 64px;
+    display:grid; grid-template-columns:minmax(0,1fr) 324px; gap:22px;}
+  .rig[data-media="text"] .only-image{display:none !important;}
+  .rig[data-media="image"] .only-text{display:none !important;}
+
+  header.bar{grid-column:1/-1; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .wordmark{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+    font-size:1.55rem; font-weight:600; letter-spacing:.01em;}
+  .wordmark em{font-style:italic; color:var(--accent);}
+  .tagline{color:var(--muted); font-size:.86rem;}
+  .tab-groups{margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;}
+  .tabs{display:flex; gap:4px; background:var(--surface2);
+    border:1px solid var(--line); border-radius:999px; padding:3px;}
+  .tabs button{border:0; background:transparent; color:var(--muted); font:inherit;
+    font-size:.82rem; padding:5px 14px; border-radius:999px; cursor:pointer;}
+  .tabs button[aria-selected="true"]{background:var(--accent); color:var(--accent-ink); font-weight:600;}
+  .tabs button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;}
+
+  /* ---------- stage ---------- */
+  .stage-col{display:flex; flex-direction:column; gap:14px; min-width:0;}
+  .viewport{position:relative; height:430px; overflow:hidden; border-radius:14px;
+    border:1px solid var(--line); background:var(--surface2);}
+  .viewport.scrolly{overflow-y:auto; scrollbar-width:thin;}
+  .track{height:100%;}
+  .viewport.scrolly .track{height:360%;}
+  .sticky{position:sticky; top:0; height:430px; display:grid; place-items:center;
+    overflow:hidden; padding:0 8%;}
+  .blob{position:absolute; width:55%; aspect-ratio:1; border-radius:50%;
+    filter:blur(70px); opacity:.35; pointer-events:none;}
+  .blob.b1{background:radial-gradient(circle,var(--glow1),transparent 70%); top:-15%; left:-10%;
+    animation:drift1 26s ease-in-out infinite alternate;}
+  .blob.b2{background:radial-gradient(circle,var(--glow2),transparent 70%); bottom:-20%; right:-8%;
+    animation:drift2 31s ease-in-out infinite alternate;}
+  @keyframes drift1{to{transform:translate(12%,10%) scale(1.15)}}
+  @keyframes drift2{to{transform:translate(-10%,-12%) scale(1.1)}}
+  @media (prefers-reduced-motion: reduce){ .blob{animation:none} }
+
+  .dream{position:relative; margin:0; max-width:22ch; text-align:center;
+    font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+    font-size:clamp(1.6rem,3.4vw,2.5rem); line-height:1.35; font-weight:500;
+    text-wrap:balance;}
+  .dream .w{display:inline-block; will-change:filter,transform,opacity;}
+
+  .img-wrap{position:relative; width:min(74%,560px); border-radius:12px; overflow:hidden;
+    will-change:filter,transform,opacity; box-shadow:0 18px 50px -18px rgba(10,6,30,.55);}
+  .img-wrap img{display:block; width:100%; height:auto; will-change:filter;}
+  .veil{position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(170deg,#f3ecff, #ffe9f4 55%, #eaf0ff);}
+
+  .scroll-hint{position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+    font-size:.78rem; color:var(--muted); background:color-mix(in srgb,var(--bg) 72%,transparent);
+    padding:4px 12px; border-radius:999px; pointer-events:none;}
+
+  .transport{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .btn{border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    font:inherit; font-size:.85rem; padding:7px 16px; border-radius:9px; cursor:pointer;}
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600;}
+  .btn[aria-pressed="true"]{background:var(--accent); border-color:var(--accent);
+    color:var(--accent-ink); font-weight:600;}
+  .scrub{flex:1; display:flex; align-items:center; gap:10px; min-width:180px;}
+  .scrub label{font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  input[type=range]{accent-color:var(--accent); width:100%;}
+  .source-row{display:flex; gap:10px; align-items:center;}
+  .source-row input[type=text]{flex:1; font:inherit; font-size:.9rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:8px 12px;}
+  .source-row .lbl{font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  .source-row .fname{font-size:.8rem; color:var(--muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; max-width:40ch;}
+
+  /* ---------- rail ---------- */
+  .rail{display:flex; flex-direction:column; gap:12px; min-width:0;}
+  .preset-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 16px;
+    display:grid; gap:6px;}
+  .preset-card label{font-size:.82rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;}
+  .preset-card select{font:inherit; font-size:.84rem; color:var(--ink);
+    background:var(--surface2); border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
+  .layer{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px;}
+  .layer h2{margin:0; font-size:.82rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    display:flex; align-items:center; gap:8px;}
+  .layer h2 small{font-weight:400; text-transform:none; letter-spacing:0; color:var(--muted); font-size:.78rem;}
+  .layer .head{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .layer .body{display:flex; flex-direction:column; gap:10px; margin-top:12px;}
+  .layer.off .body{opacity:.35; pointer-events:none;}
+  .ctl{display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center;}
+  .ctl label{font-size:.8rem; color:var(--muted);}
+  .ctl output{font-size:.78rem; color:var(--ink); font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .ctl input[type=range]{grid-column:1/-1;}
+  .ctl select{grid-column:1/-1; font:inherit; font-size:.84rem; color:var(--ink);
+    background:var(--surface2); border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
+
+  .switch{position:relative; width:34px; height:20px; flex:none;}
+  .switch input{position:absolute; inset:0; opacity:0; cursor:pointer; margin:0;}
+  .switch .knob{position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .15s;}
+  .switch .knob::after{content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+    border-radius:50%; background:var(--bg); transition:transform .15s;}
+  .switch input:checked + .knob{background:var(--accent);}
+  .switch input:checked + .knob::after{transform:translateX(14px);}
+  .switch input:focus-visible + .knob{outline:2px solid var(--accent); outline-offset:2px;}
+
+  .export{grid-column:1/-1; background:var(--surface); border:1px solid var(--line);
+    border-radius:12px; padding:16px 18px;}
+  .export .head{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .export h2{margin:0; font-size:.82rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;}
+  .export p{margin:0; color:var(--muted); font-size:.84rem; max-width:60ch;}
+  .export .head .btn{margin-left:auto;}
+  .export pre{margin:14px 0 0; background:var(--code-bg); border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px; overflow:auto; max-height:420px;
+    font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:.76rem; line-height:1.55;
+    color:var(--ink); tab-size:2;}
+  .copied{color:var(--accent); font-size:.8rem;}
+
+  @media (max-width:860px){
+    .rig{grid-template-columns:1fr;}
+    .tab-groups{margin-left:0;}
+  }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="warp" x="-25%" y="-45%" width="150%" height="190%">
+    <feTurbulence id="warpNoise" type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="7" result="n"/>
+    <feDisplacementMap id="warpDisp" in="SourceGraphic" in2="n" scale="0" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<main class="rig" id="rig" data-media="text">
+  <header class="bar">
+    <div class="wordmark">Dream <em>Rig</em></div>
+    <div class="tagline">adjustment layers for dreamy reveals · tune, preview, export</div>
+    <div class="tab-groups">
+      <div class="tabs" role="tablist" aria-label="Media">
+        <button role="tab" id="tabText" aria-selected="true">Text</button>
+        <button role="tab" id="tabImage" aria-selected="false">Image</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Preview mode">
+        <button role="tab" id="tabPreview" aria-selected="true">Preview</button>
+        <button role="tab" id="tabScroll" aria-selected="false">Scroll demo</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="stage-col">
+    <div class="viewport" id="viewport">
+      <div class="track" id="track">
+        <div class="sticky">
+          <div class="blob b1"></div>
+          <div class="blob b2"></div>
+          <p class="dream only-text" id="dream" aria-live="off"></p>
+          <div class="img-wrap only-image" id="imgWrap">
+            <img id="dreamImg" alt="Preview image">
+            <div class="veil" id="veil"></div>
+          </div>
+          <div class="scroll-hint" id="scrollHint" hidden>scroll — it resolves, holds, then dissolves</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="transport" id="transport">
+      <button class="btn primary" id="btnReveal">Reveal</button>
+      <button class="btn" id="btnHide">Hide</button>
+      <button class="btn" id="btnLoop" aria-pressed="false">Loop</button>
+      <div class="scrub">
+        <label for="scrubRange">scrub</label>
+        <input type="range" id="scrubRange" min="0" max="1000" value="0">
+      </div>
+    </div>
+
+    <div class="source-row only-text">
+      <span class="lbl">Line</span>
+      <input id="lineText" type="text"
+        value="Somewhere between waking and sleep, the city remembers itself."
+        aria-label="Preview text">
+    </div>
+    <div class="source-row only-image">
+      <span class="lbl">Image</span>
+      <button class="btn" id="btnUpload">Upload image…</button>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+      <span class="fname" id="fileName">built-in dusk scene (stays on your machine)</span>
+    </div>
+  </section>
+
+  <aside class="rail" aria-label="Adjustment layers">
+
+    <div class="preset-card">
+      <label for="pPreset">Preset</label>
+      <select id="pPreset"></select>
+    </div>
+
+    <div class="layer" data-layer="blur">
+      <div class="head">
+        <h2>Blur <small>· focus pull</small></h2>
+        <span class="switch"><input type="checkbox" id="onBlur" checked aria-label="Toggle blur layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pBlur">Amount</label><output id="oBlur"></output>
+          <input type="range" id="pBlur" min="0" max="40" step="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer" data-layer="drift">
+      <div class="head">
+        <h2>Drift <small>· rise &amp; breath</small></h2>
+        <span class="switch"><input type="checkbox" id="onDrift" checked aria-label="Toggle drift layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pY">Rise</label><output id="oY"></output>
+          <input type="range" id="pY" min="-40" max="40" step="1">
+        </div>
+        <div class="ctl">
+          <label for="pScale">Scale from</label><output id="oScale"></output>
+          <input type="range" id="pScale" min="0.90" max="1.15" step="0.01">
+        </div>
+        <div class="ctl only-text">
+          <label for="pTrack">Tracking drift</label><output id="oTrack"></output>
+          <input type="range" id="pTrack" min="0" max="0.25" step="0.01">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer" data-layer="warp">
+      <div class="head">
+        <h2>Warp <small>· turbulence</small></h2>
+        <span class="switch"><input type="checkbox" id="onWarp" aria-label="Toggle warp layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pWarp">Strength</label><output id="oWarp"></output>
+          <input type="range" id="pWarp" min="0" max="120" step="2">
+        </div>
+        <div class="ctl">
+          <label for="pFreq">Grain</label><output id="oFreq"></output>
+          <input type="range" id="pFreq" min="0.004" max="0.040" step="0.002">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer only-text" data-layer="glow">
+      <div class="head">
+        <h2>Glow <small>· halo bloom</small></h2>
+        <span class="switch"><input type="checkbox" id="onGlow" aria-label="Toggle glow layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pGlow">Radius</label><output id="oGlow"></output>
+          <input type="range" id="pGlow" min="0" max="48" step="2">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer only-text" data-layer="ghost">
+      <div class="head">
+        <h2>Ghost <small>· double vision</small></h2>
+        <span class="switch"><input type="checkbox" id="onGhost" aria-label="Toggle ghost layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pGhostX">Split</label><output id="oGhostX"></output>
+          <input type="range" id="pGhostX" min="0" max="30" step="1">
+        </div>
+        <div class="ctl">
+          <label for="pGhostBlur">Echo softness</label><output id="oGhostBlur"></output>
+          <input type="range" id="pGhostBlur" min="0" max="24" step="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer only-image" data-layer="veil">
+      <div class="head">
+        <h2>Veil <small>· haze that lifts</small></h2>
+        <span class="switch"><input type="checkbox" id="onVeil" aria-label="Toggle veil layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pVeil">Density</label><output id="oVeil"></output>
+          <input type="range" id="pVeil" min="0" max="1" step="0.05">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer only-image" data-layer="bloom">
+      <div class="head">
+        <h2>Bloom <small>· overexposed dream</small></h2>
+        <span class="switch"><input type="checkbox" id="onBloom" aria-label="Toggle bloom layer"><span class="knob"></span></span>
+      </div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pBloomB">Brightness from</label><output id="oBloomB"></output>
+          <input type="range" id="pBloomB" min="0" max="1" step="0.05">
+        </div>
+        <div class="ctl">
+          <label for="pBloomS">Saturation from</label><output id="oBloomS"></output>
+          <input type="range" id="pBloomS" min="-1" max="1" step="0.05">
+        </div>
+      </div>
+    </div>
+
+    <div class="layer" data-layer="tempo">
+      <div class="head"><h2>Tempo <small>· time &amp; stagger</small></h2></div>
+      <div class="body">
+        <div class="ctl">
+          <label for="pDur">Duration</label><output id="oDur"></output>
+          <input type="range" id="pDur" min="200" max="3200" step="50">
+        </div>
+        <div class="ctl only-text">
+          <label for="pStag">Word stagger</label><output id="oStag"></output>
+          <input type="range" id="pStag" min="0" max="300" step="10">
+        </div>
+        <div class="ctl">
+          <label for="pEase">Easing</label><output></output>
+          <select id="pEase">
+            <option value="soft">Soft out — cubic</option>
+            <option value="dream">Dream out — long tail</option>
+            <option value="inout">Ease in-out</option>
+            <option value="linear">Linear (for scrub)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="export">
+    <div class="head">
+      <h2>Export</h2>
+      <p>Generates vanilla CSS + JS for the current media tab with your tuned values baked in — drive it from IntersectionObserver or GSAP ScrollTrigger.</p>
+      <span class="copied" id="copiedNote" hidden>Copied ✓</span>
+      <button class="btn primary" id="btnExport">Generate &amp; copy</button>
+    </div>
+    <pre id="exportOut" hidden></pre>
+  </section>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- state: one full settings object per media ---------- */
+  const STATE = {
+    text: {
+      blur:14, y:18, scale:1.05, track:0.06, warp:42, freq:0.012,
+      glow:24, ghostX:12, ghostBlur:8, veil:0.8, bloomB:0.35, bloomS:0.5,
+      dur:1400, stag:70, ease:"soft",
+      on:{ blur:true, drift:true, warp:false, glow:false, ghost:false, veil:false, bloom:false }
+    },
+    image: {
+      blur:22, y:26, scale:1.08, track:0, warp:60, freq:0.010,
+      glow:24, ghostX:12, ghostBlur:8, veil:0.8, bloomB:0.35, bloomS:0.5,
+      dur:1800, stag:0, ease:"soft",
+      on:{ blur:true, drift:true, warp:false, glow:false, ghost:false, veil:true, bloom:false }
+    }
+  };
+  let media = "text";
+  let S = STATE.text;
+
+  const EASE = {
+    soft:   t => 1 - Math.pow(1 - t, 3),
+    dream:  t => 1 - Math.pow(1 - t, 5),
+    inout:  t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2,
+    linear: t => t
+  };
+  const EASE_SRC = {
+    soft:  "1 - Math.pow(1 - t, 3)",
+    dream: "1 - Math.pow(1 - t, 5)",
+    inout: "(t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2)",
+    linear:"t"
+  };
+
+  /* ---------- presets ---------- */
+  const PRESETS = {
+    text: {
+      "Morning mist":  { v:{blur:16, y:14, scale:1.04, track:0.05, dur:1600, stag:80, ease:"soft"},
+                         on:{blur:true, drift:true, warp:false, glow:false, ghost:false} },
+      "Double vision": { v:{blur:4, y:8, scale:1.01, track:0.02, ghostX:22, ghostBlur:10, dur:1600, stag:60, ease:"soft"},
+                         on:{blur:true, drift:true, warp:false, glow:false, ghost:true} },
+      "Heat haze":     { v:{blur:6, y:0, scale:1.00, track:0.03, warp:90, freq:0.028, dur:1800, stag:50, ease:"inout"},
+                         on:{blur:true, drift:false, warp:true, glow:false, ghost:false} },
+      "Slow bloom":    { v:{blur:10, y:10, scale:1.06, track:0.10, glow:36, dur:2600, stag:130, ease:"dream"},
+                         on:{blur:true, drift:true, warp:false, glow:true, ghost:false} }
+    },
+    image: {
+      "Morning mist":  { v:{blur:26, y:20, scale:1.06, veil:0.9, dur:2000, ease:"soft"},
+                         on:{blur:true, drift:true, warp:false, veil:true, bloom:false} },
+      "Heat haze":     { v:{blur:8, y:0, scale:1.00, warp:84, freq:0.020, dur:1800, ease:"inout"},
+                         on:{blur:true, drift:false, warp:true, veil:false, bloom:false} },
+      "Fever dream":   { v:{blur:14, y:12, scale:1.10, warp:50, freq:0.012, bloomB:0.55, bloomS:0.9, dur:2200, ease:"dream"},
+                         on:{blur:true, drift:true, warp:true, veil:false, bloom:true} },
+      "Deep water":    { v:{blur:32, y:30, scale:1.04, warp:70, freq:0.006, veil:0.35, dur:2800, ease:"dream"},
+                         on:{blur:true, drift:true, warp:true, veil:true, bloom:false} }
+    }
+  };
+
+  /* ---------- elements ---------- */
+  const rig = $("rig"), dream = $("dream"), disp = $("warpDisp"), noise = $("warpNoise");
+  const imgWrap = $("imgWrap"), img = $("dreamImg"), veilEl = $("veil");
+  let words = [];
+
+  function split(text){
+    dream.textContent = "";
+    words = [];
+    text.trim().split(/\s+/).forEach((word, i) => {
+      if (i) dream.appendChild(document.createTextNode(" "));
+      const s = document.createElement("span");
+      s.className = "w"; s.textContent = word;
+      dream.appendChild(s); words.push(s);
+    });
+  }
+
+  /* ---------- core: p = 0 dissolved … 1 resolved ---------- */
+  function applyText(p){
+    const n = words.length || 1;
+    const total = S.dur + S.stag * (n - 1);
+    const ease = EASE[S.ease];
+    words.forEach((w, i) => {
+      const local = clamp((p * total - i * S.stag) / S.dur, 0, 1);
+      const e = ease(local), inv = 1 - e;
+      w.style.opacity = e.toFixed(3);
+      w.style.filter = S.on.blur ? `blur(${(S.blur * inv).toFixed(2)}px)` : "";
+      w.style.transform = S.on.drift
+        ? `translateY(${(S.y * inv).toFixed(1)}px) scale(${(1 + (S.scale - 1) * inv).toFixed(3)})`
+        : "";
+      w.style.letterSpacing = S.on.drift ? `${(S.track * inv).toFixed(3)}em` : "";
+      const shadows = [];
+      if (S.on.ghost){
+        const d = S.ghostX * inv;
+        const c = `color-mix(in srgb, currentColor ${Math.round(50 * inv)}%, transparent)`;
+        shadows.push(`${d.toFixed(1)}px ${(-d*0.6).toFixed(1)}px ${S.ghostBlur}px ${c}`);
+        shadows.push(`${(-d).toFixed(1)}px ${(d*0.6).toFixed(1)}px ${S.ghostBlur}px ${c}`);
+      }
+      if (S.on.glow){
+        shadows.push(`0 0 ${(S.glow * inv).toFixed(1)}px color-mix(in srgb, currentColor 85%, transparent)`);
+      }
+      w.style.textShadow = shadows.join(", ");
+    });
+    dream.style.filter = S.on.warp ? "url(#warp)" : "";
+    if (S.on.warp) disp.setAttribute("scale", (S.warp * (1 - ease(p))).toFixed(1));
+  }
+
+  function applyImage(p){
+    const ease = EASE[S.ease];
+    const e = ease(clamp(p, 0, 1)), inv = 1 - e;
+    imgWrap.style.opacity = e.toFixed(3);
+    imgWrap.style.transform = S.on.drift
+      ? `translateY(${(S.y * inv).toFixed(1)}px) scale(${(1 + (S.scale - 1) * inv).toFixed(3)})`
+      : "";
+    const f = [];
+    if (S.on.blur)  f.push(`blur(${(S.blur * inv).toFixed(2)}px)`);
+    if (S.on.bloom) f.push(`brightness(${(1 + S.bloomB * inv).toFixed(3)}) saturate(${(1 + S.bloomS * inv).toFixed(3)})`);
+    img.style.filter = f.join(" ");
+    veilEl.style.opacity = S.on.veil ? (S.veil * inv).toFixed(3) : "0";
+    imgWrap.style.filter = S.on.warp ? "url(#warp)" : "";
+    if (S.on.warp) disp.setAttribute("scale", (S.warp * inv).toFixed(1));
+  }
+
+  function apply(p){
+    noise.setAttribute("baseFrequency", String(S.freq));
+    if (media === "text") applyText(p); else applyImage(p);
+  }
+
+  /* ---------- playback ---------- */
+  let raf = null, looping = false;
+  function stop(){ if (raf){ cancelAnimationFrame(raf); raf = null; } }
+  function totalMs(){
+    const n = media === "text" ? (words.length || 1) : 1;
+    return S.dur + S.stag * (n - 1);
+  }
+  function play(from, to, done){
+    stop();
+    const total = totalMs();
+    const t0 = performance.now();
+    (function frame(now){
+      const k = clamp((now - t0) / total, 0, 1);
+      const p = from + (to - from) * k;
+      apply(p); syncScrub(p);
+      if (k < 1) raf = requestAnimationFrame(frame);
+      else { raf = null; if (done) done(); }
+    })(t0);
+  }
+  function loopCycle(){
+    if (!looping) return;
+    play(0, 1, () => setTimeout(() => {
+      if (!looping) return;
+      play(1, 0, () => setTimeout(loopCycle, 500));
+    }, 1100));
+  }
+
+  const scrub = $("scrubRange");
+  function syncScrub(p){ scrub.value = Math.round(p * 1000); }
+
+  const btnLoop = $("btnLoop");
+  function pressLoop(){ btnLoop.setAttribute("aria-pressed", String(looping)); }
+  $("btnReveal").addEventListener("click", () => { looping = false; pressLoop(); play(0, 1); });
+  $("btnHide").addEventListener("click",   () => { looping = false; pressLoop(); play(1, 0); });
+  btnLoop.addEventListener("click", () => {
+    looping = !looping; pressLoop();
+    if (looping) loopCycle(); else stop();
+  });
+  scrub.addEventListener("input", () => {
+    looping = false; pressLoop(); stop();
+    apply(scrub.value / 1000);
+  });
+
+  /* ---------- controls ---------- */
+  const presetSel = $("pPreset");
+  const CTLS = [
+    ["pBlur","oBlur","blur", v => v + " px"],
+    ["pY","oY","y", v => v + " px"],
+    ["pScale","oScale","scale", v => v.toFixed(2)],
+    ["pTrack","oTrack","track", v => v.toFixed(2) + " em"],
+    ["pWarp","oWarp","warp", v => String(v)],
+    ["pFreq","oFreq","freq", v => v.toFixed(3)],
+    ["pGlow","oGlow","glow", v => v + " px"],
+    ["pGhostX","oGhostX","ghostX", v => v + " px"],
+    ["pGhostBlur","oGhostBlur","ghostBlur", v => v + " px"],
+    ["pVeil","oVeil","veil", v => Math.round(v*100) + " %"],
+    ["pBloomB","oBloomB","bloomB", v => "+" + Math.round(v*100) + " %"],
+    ["pBloomS","oBloomS","bloomS", v => (v>=0?"+":"") + Math.round(v*100) + " %"],
+    ["pDur","oDur","dur", v => (v/1000).toFixed(1) + " s"],
+    ["pStag","oStag","stag", v => v + " ms"]
+  ];
+  const TOGGLES = [["onBlur","blur"],["onDrift","drift"],["onWarp","warp"],
+    ["onGlow","glow"],["onGhost","ghost"],["onVeil","veil"],["onBloom","bloom"]];
+
+  CTLS.forEach(([id, outId, key, fmt]) => {
+    $(id).addEventListener("input", () => {
+      S[key] = parseFloat($(id).value);
+      $(outId).textContent = fmt(S[key]);
+      presetSel.value = "custom";
+      apply(scrub.value / 1000);
+    });
+  });
+  $("pEase").addEventListener("change", e => {
+    S.ease = e.target.value; presetSel.value = "custom";
+    apply(scrub.value / 1000);
+  });
+  TOGGLES.forEach(([id, key]) => {
+    $(id).addEventListener("change", () => {
+      S.on[key] = $(id).checked;
+      $(id).closest(".layer").classList.toggle("off", !$(id).checked);
+      presetSel.value = "custom";
+      apply(scrub.value / 1000);
+    });
+  });
+
+  function refreshControls(){
+    CTLS.forEach(([id, outId, key, fmt]) => {
+      $(id).value = S[key];
+      $(outId).textContent = fmt(S[key]);
+    });
+    $("pEase").value = S.ease;
+    TOGGLES.forEach(([id, key]) => {
+      $(id).checked = !!S.on[key];
+      $(id).closest(".layer").classList.toggle("off", !S.on[key]);
+    });
+  }
+
+  function buildPresets(){
+    presetSel.innerHTML = "";
+    const custom = document.createElement("option");
+    custom.value = "custom"; custom.textContent = "Custom";
+    presetSel.appendChild(custom);
+    Object.keys(PRESETS[media]).forEach(name => {
+      const o = document.createElement("option");
+      o.value = name; o.textContent = name;
+      presetSel.appendChild(o);
+    });
+    presetSel.value = "custom";
+  }
+  presetSel.addEventListener("change", () => {
+    const preset = PRESETS[media][presetSel.value];
+    if (!preset) return;
+    Object.assign(S, preset.v);
+    Object.assign(S.on, preset.on);
+    refreshControls();
+    apply(0); syncScrub(0);
+    play(0, 1);
+    presetSel.value = presetSel.value; // keep selection
+  });
+
+  /* ---------- text + image sources ---------- */
+  $("lineText").addEventListener("input", e => {
+    split(e.target.value || "…");
+    apply(scrub.value / 1000);
+  });
+  $("btnUpload").addEventListener("click", () => $("fileInput").click());
+  $("fileInput").addEventListener("change", e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      img.src = r.result;
+      $("fileName").textContent = file.name + " (stays on your machine)";
+      apply(scrub.value / 1000);
+    };
+    r.readAsDataURL(file);
+  });
+
+  /* built-in dusk scene so image mode works with zero setup */
+  function makeScene(){
+    const c = document.createElement("canvas");
+    c.width = 880; c.height = 560;
+    const x = c.getContext("2d");
+    const sky = x.createLinearGradient(0, 0, 0, 560);
+    sky.addColorStop(0, "#221c44"); sky.addColorStop(.45, "#6a5aa8");
+    sky.addColorStop(.75, "#c9899e"); sky.addColorStop(1, "#e8b98a");
+    x.fillStyle = sky; x.fillRect(0, 0, 880, 560);
+    const moon = x.createRadialGradient(600, 190, 10, 600, 190, 150);
+    moon.addColorStop(0, "rgba(255,241,214,.95)");
+    moon.addColorStop(.25, "rgba(255,228,190,.45)");
+    moon.addColorStop(1, "rgba(255,228,190,0)");
+    x.fillStyle = moon; x.beginPath(); x.arc(600, 190, 150, 0, 7); x.fill();
+    const hill = (yBase, amp, color) => {
+      x.fillStyle = color; x.beginPath(); x.moveTo(0, 560);
+      x.lineTo(0, yBase);
+      for (let px = 0; px <= 880; px += 20)
+        x.lineTo(px, yBase + Math.sin(px / 130 + yBase) * amp + Math.sin(px / 47) * amp * .3);
+      x.lineTo(880, 560); x.closePath(); x.fill();
+    };
+    hill(360, 26, "rgba(64,50,110,.55)");
+    hill(420, 20, "rgba(45,34,86,.75)");
+    hill(478, 14, "#241b47");
+    for (let i = 0; i < 3; i++){
+      const my = 380 + i * 46;
+      const mist = x.createLinearGradient(0, my - 18, 0, my + 18);
+      mist.addColorStop(0, "rgba(240,228,255,0)");
+      mist.addColorStop(.5, "rgba(240,228,255,.16)");
+      mist.addColorStop(1, "rgba(240,228,255,0)");
+      x.fillStyle = mist; x.fillRect(0, my - 18, 880, 36);
+    }
+    return c.toDataURL("image/jpeg", 0.9);
+  }
+
+  /* ---------- media + mode tabs ---------- */
+  const viewport = $("viewport"), transport = $("transport"), hint = $("scrollHint");
+  const tabText = $("tabText"), tabImage = $("tabImage");
+  const tabP = $("tabPreview"), tabS = $("tabScroll");
+
+  function setMedia(m){
+    media = m; S = STATE[m];
+    tabText.setAttribute("aria-selected", String(m === "text"));
+    tabImage.setAttribute("aria-selected", String(m === "image"));
+    rig.dataset.media = m;
+    looping = false; pressLoop(); stop();
+    buildPresets(); refreshControls();
+    if (viewport.classList.contains("scrolly")){ viewport.scrollTop = 0; apply(0); }
+    else { apply(1); syncScrub(1); }
+  }
+  tabText.addEventListener("click", () => setMedia("text"));
+  tabImage.addEventListener("click", () => setMedia("image"));
+
+  function setMode(scroll){
+    tabP.setAttribute("aria-selected", String(!scroll));
+    tabS.setAttribute("aria-selected", String(scroll));
+    viewport.classList.toggle("scrolly", scroll);
+    transport.style.display = scroll ? "none" : "";
+    hint.hidden = !scroll;
+    looping = false; pressLoop(); stop();
+    if (scroll){ viewport.scrollTop = 0; apply(0); }
+    else { apply(1); syncScrub(1); }
+  }
+  tabP.addEventListener("click", () => setMode(false));
+  tabS.addEventListener("click", () => setMode(true));
+
+  viewport.addEventListener("scroll", () => {
+    if (!viewport.classList.contains("scrolly")) return;
+    const max = viewport.scrollHeight - viewport.clientHeight;
+    const P = max ? viewport.scrollTop / max : 0;
+    let v;
+    if (P < 0.38) v = P / 0.38;
+    else if (P < 0.62) v = 1;
+    else v = 1 - (P - 0.62) / 0.38;
+    apply(clamp(v, 0, 1));
+  }, { passive:true });
+
+  /* ---------- export ---------- */
+  function warpSvg(idSuffix){
+    return `<!-- Drop this SVG filter once anywhere in the page -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="dreamWarp${idSuffix}" x="-25%" y="-45%" width="150%" height="190%">
+    <feTurbulence type="fractalNoise" baseFrequency="${S.freq}" numOctaves="2" seed="7" result="n"/>
+    <feDisplacementMap id="dreamWarpDisp${idSuffix}" in="SourceGraphic" in2="n" scale="0"
+      xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>`;
+  }
+
+  function textSnippet(){
+    const on = S.on;
+    const parts = [];
+    parts.push(
+`/* ============================================================
+   Dreamy TEXT reveal — exported from Dream Rig
+   Layers: ${["blur","drift","warp","glow","ghost"].filter(k => on[k]).join(" + ") || "opacity only"}
+   ============================================================ */`);
+    if (on.warp) parts.push(warpSvg(""));
+    parts.push(
+`/* CSS */
+.dream-word { display:inline-block; will-change:filter,transform,opacity; }`);
+    parts.push(
+`// JS — values tuned in Dream Rig
+const DREAM = {
+  blur: ${S.blur}, rise: ${S.y}, scaleFrom: ${S.scale}, tracking: ${S.track},
+  warp: ${S.warp}, glow: ${S.glow}, ghostSplit: ${S.ghostX}, ghostBlur: ${S.ghostBlur},
+  duration: ${S.dur}, stagger: ${S.stag},
+  ease: t => ${EASE_SRC[S.ease]}
+};
+
+function dreamSplit(el){
+  const wordEls = [];
+  el.textContent.trim().split(/\\s+/).forEach((word, i) => {
+    if (i) el.appendChild(document.createTextNode(" "));
+    else el.textContent = "";
+    const s = document.createElement("span");
+    s.className = "dream-word"; s.textContent = word;
+    el.appendChild(s); wordEls.push(s);
+  });
+  el._dreamWords = wordEls;
+  return wordEls;
+}
+
+// Core: p = 0 dissolved … 1 resolved. Call from any driver.
+function dreamSet(el, p){
+  const words = el._dreamWords || dreamSplit(el);
+  const total = DREAM.duration + DREAM.stagger * (words.length - 1);
+  words.forEach((w, i) => {
+    const local = Math.min(1, Math.max(0,
+      (p * total - i * DREAM.stagger) / DREAM.duration));
+    const e = DREAM.ease(local), inv = 1 - e;
+    w.style.opacity = e;${on.blur ? `
+    w.style.filter = \`blur(\${DREAM.blur * inv}px)\`;` : ""}${on.drift ? `
+    w.style.transform =
+      \`translateY(\${DREAM.rise * inv}px) scale(\${1 + (DREAM.scaleFrom - 1) * inv})\`;
+    w.style.letterSpacing = \`\${DREAM.tracking * inv}em\`;` : ""}${(on.ghost || on.glow) ? `
+    const shadows = [];${on.ghost ? `
+    const d = DREAM.ghostSplit * inv;
+    const gc = \`color-mix(in srgb, currentColor \${Math.round(50 * inv)}%, transparent)\`;
+    shadows.push(\`\${d}px \${-d * 0.6}px \${DREAM.ghostBlur}px \${gc}\`);
+    shadows.push(\`\${-d}px \${d * 0.6}px \${DREAM.ghostBlur}px \${gc}\`);` : ""}${on.glow ? `
+    shadows.push(\`0 0 \${DREAM.glow * inv}px color-mix(in srgb, currentColor 85%, transparent)\`);` : ""}
+    w.style.textShadow = shadows.join(", ");` : ""}
+  });${on.warp ? `
+  el.style.filter = "url(#dreamWarp)";
+  document.getElementById("dreamWarpDisp")
+    .setAttribute("scale", DREAM.warp * (1 - DREAM.ease(p)));` : ""}
+}
+
+function dreamPlay(el, show){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches)
+    return dreamSet(el, show ? 1 : 0);
+  const words = el._dreamWords || dreamSplit(el);
+  const total = DREAM.duration + DREAM.stagger * (words.length - 1);
+  const t0 = performance.now();
+  (function frame(now){
+    const k = Math.min(1, (now - t0) / total);
+    dreamSet(el, show ? k : 1 - k);
+    if (k < 1) requestAnimationFrame(frame);
+  })(t0);
+}
+
+/* --- Driver A: reveal on enter ---
+new IntersectionObserver(entries => entries.forEach(en =>
+  dreamPlay(en.target, en.isIntersecting)
+), { threshold: 0.4 }).observe(document.querySelector(".my-line"));
+*/
+
+/* --- Driver B: scroll-scrubbed (GSAP ScrollTrigger) ---
+ScrollTrigger.create({
+  trigger: ".my-section", start: "top 80%", end: "top 30%", scrub: true,
+  onUpdate: self => dreamSet(document.querySelector(".my-line"), self.progress)
+});
+*/`);
+    return parts.join("\n\n");
+  }
+
+  function imageSnippet(){
+    const on = S.on;
+    const parts = [];
+    parts.push(
+`/* ============================================================
+   Dreamy IMAGE reveal — exported from Dream Rig
+   Layers: ${["blur","drift","warp","veil","bloom"].filter(k => on[k]).join(" + ") || "opacity only"}
+   ============================================================ */`);
+    if (on.warp) parts.push(warpSvg("Img"));
+    parts.push(
+`<!-- Markup: wrap the image once -->
+<figure class="dream-img">
+  <img src="your-image.jpg" alt="…">${on.veil ? `
+  <span class="dream-veil" aria-hidden="true"></span>` : ""}
+</figure>`);
+    parts.push(
+`/* CSS */
+.dream-img { position:relative; overflow:hidden; margin:0;
+  will-change:filter,transform,opacity; }
+.dream-img img { display:block; width:100%; height:auto; will-change:filter; }${on.veil ? `
+.dream-veil { position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(170deg, #f3ecff, #ffe9f4 55%, #eaf0ff); }` : ""}`);
+    parts.push(
+`// JS — values tuned in Dream Rig
+const DREAM_IMG = {
+  blur: ${S.blur}, rise: ${S.y}, scaleFrom: ${S.scale},
+  warp: ${S.warp}, veil: ${S.veil}, bloomBrightness: ${S.bloomB}, bloomSaturation: ${S.bloomS},
+  duration: ${S.dur},
+  ease: t => ${EASE_SRC[S.ease]}
+};
+
+// Core: p = 0 dissolved … 1 resolved. Call from any driver.
+function dreamSetImage(fig, p){
+  const img = fig.querySelector("img");
+  const e = DREAM_IMG.ease(Math.min(1, Math.max(0, p))), inv = 1 - e;
+  fig.style.opacity = e;${on.drift ? `
+  fig.style.transform =
+    \`translateY(\${DREAM_IMG.rise * inv}px) scale(\${1 + (DREAM_IMG.scaleFrom - 1) * inv})\`;` : ""}
+  const f = [];${on.blur ? `
+  f.push(\`blur(\${DREAM_IMG.blur * inv}px)\`);` : ""}${on.bloom ? `
+  f.push(\`brightness(\${1 + DREAM_IMG.bloomBrightness * inv}) saturate(\${1 + DREAM_IMG.bloomSaturation * inv})\`);` : ""}
+  img.style.filter = f.join(" ");${on.veil ? `
+  const veil = fig.querySelector(".dream-veil");
+  if (veil) veil.style.opacity = DREAM_IMG.veil * inv;` : ""}${on.warp ? `
+  fig.style.filter = "url(#dreamWarpImg)";
+  document.getElementById("dreamWarpDispImg")
+    .setAttribute("scale", DREAM_IMG.warp * inv);` : ""}
+}
+
+function dreamPlayImage(fig, show){
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches)
+    return dreamSetImage(fig, show ? 1 : 0);
+  const t0 = performance.now();
+  (function frame(now){
+    const k = Math.min(1, (now - t0) / DREAM_IMG.duration);
+    dreamSetImage(fig, show ? k : 1 - k);
+    if (k < 1) requestAnimationFrame(frame);
+  })(t0);
+}
+
+/* --- Driver A: reveal on enter ---
+new IntersectionObserver(entries => entries.forEach(en =>
+  dreamPlayImage(en.target, en.isIntersecting)
+), { threshold: 0.4 }).observe(document.querySelector(".dream-img"));
+*/
+
+/* --- Driver B: scroll-scrubbed (GSAP ScrollTrigger) ---
+ScrollTrigger.create({
+  trigger: ".my-section", start: "top 80%", end: "top 30%", scrub: true,
+  onUpdate: self => dreamSetImage(document.querySelector(".dream-img"), self.progress)
+});
+*/`);
+    return parts.join("\n\n");
+  }
+
+  const out = $("exportOut"), note = $("copiedNote");
+  $("btnExport").addEventListener("click", async () => {
+    const code = media === "text" ? textSnippet() : imageSnippet();
+    out.textContent = code; out.hidden = false;
+    try {
+      await navigator.clipboard.writeText(code);
+      note.hidden = false;
+      setTimeout(() => { note.hidden = true; }, 2200);
+    } catch (e) { /* clipboard blocked — code is shown below for manual copy */ }
+  });
+
+  /* ---------- init ---------- */
+  split($("lineText").value);
+  img.src = makeScene();
+  buildPresets(); refreshControls();
+  if (reduced){ apply(1); syncScrub(1); }
+  else setTimeout(() => play(0, 1), 450);
+})();
+</script>
+
+</body>
+</html>
