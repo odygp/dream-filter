@@ -92,6 +92,7 @@
     font-size:clamp(1.6rem,3.4vw,2.5rem); line-height:1.35; font-weight:500;
     text-wrap:balance;}
   .dream .w{display:inline-block; will-change:filter,transform,opacity;}
+  .dream .line{display:block; white-space:nowrap;}
 
   .img-wrap{position:relative; width:min(74%,560px); border-radius:12px; overflow:hidden;
     will-change:filter,transform,opacity; box-shadow:0 18px 50px -18px rgba(10,6,30,.55);}
@@ -147,6 +148,9 @@
   input[type=color]{width:36px; height:24px; padding:0; border:1px solid var(--line);
     border-radius:6px; background:none; cursor:pointer;}
   input[type=color]:disabled{opacity:.35; cursor:default;}
+  .local-row{grid-column:1/-1; display:flex; gap:8px;}
+  .local-row input{flex:1; min-width:0; font:inherit; font-size:.84rem; color:var(--ink);
+    background:var(--surface2); border:1px solid var(--line); border-radius:8px; padding:6px 8px;}
 
   .switch{position:relative; width:34px; height:20px; flex:none;}
   .switch input{position:absolute; inset:0; opacity:0; cursor:pointer; margin:0;}
@@ -262,6 +266,14 @@
           <label for="fontFile">Custom font</label>
           <button class="btn sm" id="btnFont">Upload…</button>
           <input type="file" id="fontFile" accept=".woff2,.woff,.ttf,.otf" hidden>
+        </div>
+        <div class="ctl">
+          <label for="tLocal">Installed font</label><output></output>
+          <div class="local-row">
+            <input type="text" id="tLocal" list="localFonts" placeholder="Type a name — e.g. Futura">
+            <button class="btn sm" id="btnLocal" title="List installed fonts (Chrome / Edge)">List</button>
+          </div>
+          <datalist id="localFonts"></datalist>
         </div>
         <div class="ctl">
           <label for="tSize">Size</label><output id="otSize">40 px</output>
@@ -511,6 +523,35 @@
     });
   }
 
+  /* Lock line breaks: measure the natural wrap in the final (resolved) state,
+     then group words into nowrap line blocks so animating letter-spacing can
+     never push a word onto another line. Re-run on text/type/size changes. */
+  function relayout(){
+    if (!words.length || media !== "text") return;
+    words.forEach(w => { w.style.letterSpacing = ""; });
+    dream.textContent = "";
+    words.forEach((w, i) => {
+      if (i) dream.appendChild(document.createTextNode(" "));
+      dream.appendChild(w);
+    });
+    const lines = []; let curTop = null;
+    words.forEach(w => {
+      const t = w.offsetTop;
+      if (curTop === null || Math.abs(t - curTop) > 2){ curTop = t; lines.push([]); }
+      lines[lines.length - 1].push(w);
+    });
+    dream.textContent = "";
+    lines.forEach(ws => {
+      const L = document.createElement("span");
+      L.className = "line";
+      ws.forEach((w, i) => {
+        if (i) L.appendChild(document.createTextNode(" "));
+        L.appendChild(w);
+      });
+      dream.appendChild(L);
+    });
+  }
+
   /* ---------- core: p = 0 dissolved … 1 resolved ---------- */
   function applyText(p){
     const n = words.length || 1;
@@ -557,7 +598,9 @@
     if (S.on.warp) disp.setAttribute("scale", (S.warp * inv).toFixed(1));
   }
 
+  let lastP = 1;
   function apply(p){
+    lastP = p;
     noise.setAttribute("baseFrequency", String(S.freq));
     if (media === "text") applyText(p); else applyImage(p);
   }
@@ -697,6 +740,7 @@
     dream.style.fontStyle = TYPE.italic ? "italic" : "normal";
     dream.style.color = TYPE.colorOn ? TYPE.color : "";
     $("tColor").disabled = !TYPE.colorOn;
+    relayout(); apply(lastP);
   }
   $("tFamily").addEventListener("change", e => { TYPE.family = e.target.value; applyType(); });
   [["tSize","otSize","size", v => v + " px"],
@@ -736,10 +780,54 @@
   $("tColorOn").addEventListener("change", e => { TYPE.colorOn = e.target.checked; applyType(); });
   $("tColor").addEventListener("input", e => { TYPE.color = e.target.value; applyType(); });
 
+  /* installed fonts: any typed family name works everywhere; the List button
+     fills the autocomplete via the Local Font Access API (Chrome / Edge) */
+  const localOpt = document.createElement("option");
+  localOpt.value = "local"; localOpt.hidden = true;
+  $("tFamily").appendChild(localOpt);
+  function useLocalFont(name){
+    name = name.trim();
+    if (!name) return;
+    FAMILIES.local = `'${name.replace(/'/g, "")}',` + FAMILIES.serif;
+    localOpt.hidden = false;
+    localOpt.textContent = "Installed — " + name;
+    $("tFamily").value = "local";
+    TYPE.family = "local";
+    applyType();
+  }
+  $("tLocal").addEventListener("change", e => useLocalFont(e.target.value));
+  $("btnLocal").addEventListener("click", async () => {
+    const input = $("tLocal");
+    if (!window.queryLocalFonts){
+      input.placeholder = "List needs Chrome/Edge — typing a name still works";
+      return;
+    }
+    try {
+      const fonts = await window.queryLocalFonts();
+      const fams = [...new Set(fonts.map(f => f.family))].sort();
+      const dl = $("localFonts");
+      dl.innerHTML = "";
+      fams.forEach(f => {
+        const o = document.createElement("option");
+        o.value = f; dl.appendChild(o);
+      });
+      input.placeholder = fams.length + " fonts — start typing";
+      input.focus();
+    } catch (err) {
+      input.placeholder = "Permission denied — typing a name still works";
+    }
+  });
+
   /* ---------- text + image sources ---------- */
   $("lineText").addEventListener("input", e => {
     split(e.target.value || "…");
+    relayout();
     apply(scrub.value / 1000);
+  });
+  let resizeT = null;
+  addEventListener("resize", () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => { relayout(); apply(lastP); }, 150);
   });
   $("btnUpload").addEventListener("click", () => $("fileInput").click());
   $("fileInput").addEventListener("change", e => {
@@ -801,6 +889,7 @@
     rig.dataset.media = m;
     looping = false; pressLoop(); stop();
     buildPresets(); refreshControls();
+    if (m === "text") relayout();
     if (viewport.classList.contains("scrolly")){ viewport.scrollTop = 0; apply(0); }
     else { apply(1); syncScrub(1); }
   }
@@ -854,7 +943,8 @@
     if (on.warp) parts.push(warpSvg(""));
     parts.push(
 `/* CSS */
-.dream-word { display:inline-block; will-change:filter,transform,opacity; }`);
+.dream-word { display:inline-block; will-change:filter,transform,opacity; }
+.dream-line { display:block; white-space:nowrap; }`);
     parts.push(
 `// JS — values tuned in Dream Rig
 const DREAM = {
@@ -865,13 +955,31 @@ const DREAM = {
 };
 
 function dreamSplit(el){
+  const source = el._dreamWords
+    ? el._dreamWords.map(w => w.textContent).join(" ")
+    : el.textContent;
   const wordEls = [];
-  el.textContent.trim().split(/\\s+/).forEach((word, i) => {
+  source.trim().split(/\\s+/).forEach((word, i) => {
     if (i) el.appendChild(document.createTextNode(" "));
     else el.textContent = "";
     const s = document.createElement("span");
     s.className = "dream-word"; s.textContent = word;
     el.appendChild(s); wordEls.push(s);
+  });
+  // Lock line breaks so animated letter-spacing can't re-wrap words mid-effect.
+  // (Re-call dreamSplit after the container resizes or fonts load.)
+  const lines = []; let top = null;
+  wordEls.forEach(w => {
+    const t = w.offsetTop;
+    if (top === null || Math.abs(t - top) > 2){ top = t; lines.push([]); }
+    lines[lines.length - 1].push(w);
+  });
+  el.textContent = "";
+  lines.forEach(ws => {
+    const L = document.createElement("span");
+    L.className = "dream-line";
+    ws.forEach((w, i) => { if (i) L.appendChild(document.createTextNode(" ")); L.appendChild(w); });
+    el.appendChild(L);
   });
   el._dreamWords = wordEls;
   return wordEls;
